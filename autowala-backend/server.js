@@ -10,16 +10,24 @@ const tripRoutes = require('./routes/tripRoutes');
 const app = express();
 const server = http.createServer(app);
 
-// Socket.io setup for real-time features
-const io = new Server(server, {
-  cors: {
-    origin: 'http://localhost:3000',
-    methods: ['GET', 'POST']
-  }
-});
+// ✅ CORS FIX (IMPORTANT)
+const allowedOrigins = [
+  'http://localhost:3000', // local dev
+  'https://your-firebase-app.web.app' // 🔁 replace with your Firebase URL
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // allow Postman / mobile apps
+    if (allowedOrigins.indexOf(origin) === -1) {
+      return callback(new Error('CORS not allowed'), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true
+}));
 
 // Middleware
-app.use(cors({ origin: 'http://localhost:3000' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -27,22 +35,29 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/trip', tripRoutes);
 
-// Health check
+// ✅ Root route (for testing)
 app.get('/', (req, res) => {
-  res.json({ message: '🚗 AutoWala Backend is Running!', status: 'OK' });
+  res.json({
+    message: '🚗 AutoWala Backend is Running!',
+    status: 'OK'
+  });
 });
 
-// Socket.io - Real-time chat & updates
+// ✅ Socket.io setup
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ['GET', 'POST']
+  }
+});
+
 io.on('connection', (socket) => {
   console.log(`🔌 User connected: ${socket.id}`);
 
-  // Join a trip room
   socket.on('join_trip', (tripId) => {
     socket.join(`trip_${tripId}`);
-    console.log(`User joined trip room: trip_${tripId}`);
   });
 
-  // Send message in trip chat
   socket.on('send_message', (data) => {
     io.to(`trip_${data.tripId}`).emit('receive_message', {
       sender: data.sender,
@@ -51,7 +66,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Driver location update
   socket.on('driver_location', (data) => {
     io.to(`trip_${data.tripId}`).emit('location_update', {
       lat: data.lat,
@@ -64,8 +78,8 @@ io.on('connection', (socket) => {
   });
 });
 
+// Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`\n🚗 AutoWala Backend running on http://localhost:${PORT}`);
-  console.log(`📡 Socket.io ready for real-time connections\n`);
+  console.log(`🚗 Server running on port ${PORT}`);
 });
